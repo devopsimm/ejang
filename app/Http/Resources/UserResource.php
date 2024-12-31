@@ -16,16 +16,20 @@ class UserResource extends JsonResource
     {
 
         $user = $this->resource['user'];
-
         $subscription = $this->resource['subscription'];
-        return [
+
+        $data = [
             'name'=>$user->fullname,
             'emailaddress'=>$user->emailaddress,
             'country_code'=>$user->country_code,
             'phone_number'=>$user->phone_number,
             'country'=>$user->getCountry,
             'fcm_token'=>$user->fcm_token,
-            'plan_id'=>$subscription->subscription_id,
             ];
+        if ($subscription){
+            $data['plan_id']  = $subscription->subscription_id;
+        }
+
+        return  $data;
     }
 }

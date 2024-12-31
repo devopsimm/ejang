@@ -79,7 +79,7 @@ class User extends Authenticatable
 
 
     public function userSubscription(){
-        return $this->hasOne('App\Models\UserSubscription','user_id');
+        return $this->hasOne('App\Models\UserSubscription','user_id')->withDefault(['subscription_id'=>0]);
     }
 
     public function routeNotificationForMail()
