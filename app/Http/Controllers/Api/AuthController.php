@@ -24,7 +24,7 @@ class AuthController extends Controller
                 'name' => 'required|string|max:255',
                 'emailaddress' => 'required|string|email|max:255|unique:jn_register_users',
                 'password' => 'required|string|min:8',
-                'country_code'=>'required|string|max:255',
+                'country_code'=>'string|max:255',
                 'phone_number'=>'required|string|max:255',
                 'country'=>'required|int|max:255',
                 'fcm_token'=>'required|string|max:255',
@@ -38,18 +38,20 @@ class AuthController extends Controller
                 'fullname' => $validated['name'],
                 'emailaddress' => $validated['emailaddress'],
                 'password' => $CI_Encryption->encrypt($validated['password']),
-                'country_code' => $validated['country_code'],
                 'phone_number' => $validated['phone_number'],
                 'country' => $validated['country'],
                 'fcm_token' => $validated['fcm_token'],
             ]);
             $subscription = false;
-            if ($validated['plan_id'] != 0){
-                $subscription = UserSubscription::create([
-                    'user_id'=>$user->id,
-                    'subscription_id'=>$validated['plan_id']
-                ]);
+            if (isset($request->plan_id)){
+                if ($validated['plan_id'] != 0){
+                    $subscription = UserSubscription::create([
+                        'user_id'=>$user->id,
+                        'subscription_id'=>$validated['plan_id']
+                    ]);
+                }
             }
+
             $token = $user->createToken('auth_token')->plainTextToken;
             return  response([
                 'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
