@@ -24,10 +24,10 @@ class WebController extends Controller
 //        });
 //        return 'Test email sent!';
 
-        $user = User::find(19);
-        $user->generateTwoFactorCode();
-        $user->notify(new SendTwoFactorCode());
-
+//        $user = User::find(19);
+//        $user->generateTwoFactorCode();
+//        $user->notify(new SendTwoFactorCode());
+//
 
 
     }
