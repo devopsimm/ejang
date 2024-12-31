@@ -28,7 +28,12 @@ class WebController extends Controller
 //        $user->generateTwoFactorCode();
 //        $user->notify(new SendTwoFactorCode());
 //
-
+        $code = rand(100000, 999999);
+        $view = view('otpEmail',compact('code'))->render();
+        \Illuminate\Support\Facades\Mail::html($view, function ($message) {
+            $message->to('mushahidahmed@mailinator.com')
+                ->subject('Test Email');
+        });
 
     }
 

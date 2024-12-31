@@ -11,6 +11,7 @@ use App\Notifications\SendTwoFactorCode;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -162,15 +163,45 @@ class AuthController extends Controller
         ],Response::HTTP_ACCEPTED);
     }
 
-    public function sendOtp(Request $request){
-        $user = Auth::user();
-        $user->generateTwoFactorCode();
-        $user->notify(new SendTwoFactorCode());
+    public function sendOtp(Request $request,$forgetPassword=false){
+//        $user = Auth::user();
+//        $user->generateTwoFactorCode();
+//        $user->notify(new SendTwoFactorCode());
+
+
+      if ($forgetPassword == 'forget-password'){
+          $request->validate([
+              'emailaddress' => 'required|string|email|max:255',
+          ], [
+              'emailaddress.required' => 'Please provide your email address.',
+              'emailaddress.string' => 'Please provide your correct email address.',
+          ]);
+      }else{
+          $request->validate([
+              'emailaddress' => 'required|string|email|max:255|unique:jn_register_users',
+          ], [
+              'emailaddress.required' => 'Please provide your email address.',
+              'emailaddress.string' => 'Please provide your correct email address.',
+              'emailaddress.unique' => 'The email has already been taken.',
+          ]);
+      }
+
+
+
+        $code = rand(100000, 999999);
+        $view = view('otpEmail',compact('code'))->render();
+        Mail::html($view, function ($message) use ($request) {
+            $message->to($request->emailaddress)
+                ->subject('E-jang Two Factor Code');
+        });
+
         return response()->json([
+            'data'=> $code,
             'message' => 'OTP sent successfully',
         ],Response::HTTP_ACCEPTED);
 
     }
+
 
     public function verifyOtp(Request $request){
         $user = Auth::user();
@@ -192,6 +223,26 @@ class AuthController extends Controller
         return response()->json([
             'data' => $countries,
         ],Response::HTTP_ACCEPTED);
+    }
+
+    public function forgetPassword(Request $request){
+        $CI_Encryption = new Encryption();
+        $request->validate([
+            'emailaddress' => 'required|string|email|max:255',
+            'password' => 'required|string|min:8',
+        ], [
+            'emailaddress.required' => 'Please provide your email address.',
+            'emailaddress.string' => 'Please provide your correct email address.',
+            'emailaddress.unique' => 'The email has already been taken.',
+        ]);
+        User::where('emailaddress',$request->emailaddress)->update([
+            'password' => $CI_Encryption->encrypt($request->new_password)
+        ]);
+        return response()->json([
+            'message' => 'Password changed successfully',
+        ],Response::HTTP_ACCEPTED);
+
+
     }
 
 }
