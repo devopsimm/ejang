@@ -5,13 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Libraries\Encryption;
-use App\Models\UserMeta;
+use App\Models\Country;
 use App\Models\UserSubscription;
 use App\Notifications\SendTwoFactorCode;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -63,19 +62,29 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $CI_Encryption = new Encryption();
+
         $validated = $request->validate([
             'emailaddress' => 'required|email',
             'password' => 'required',
         ]);
+
+
         $user = User::where('emailaddress', $validated['emailaddress'])->first();
         if (!$user) {
-            return response()->json(['message' => 'Invalid credentials'], Response::HTTP_BAD_REQUEST);
+            return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
         }
 
         $OrgPassword = $CI_Encryption->decrypt($user->password);
         if ($OrgPassword != $validated['password']){
             return response()->json(['message' => 'Invalid credentials'], Response::HTTP_BAD_REQUEST);
         }
+
+        if (isset($request->fcm_token)){
+            $user->fcm_token = $request->fcm_token;
+            $user->save();
+        }
+
+
         $token = $user->createToken('auth_token')->plainTextToken;
         $subscription = $user->userSubscription;
         return response()->json([
@@ -176,10 +185,14 @@ class AuthController extends Controller
             ],Response::HTTP_BAD_REQUEST);
         }
 
-
-
     }
 
+    public function getCountries(Request $request){
+        $countries = Country::all();
+        return response()->json([
+            'data' => $countries,
+        ],Response::HTTP_ACCEPTED);
+    }
 
 }
 

@@ -87,4 +87,8 @@ class User extends Authenticatable
         return $this->emailaddress; // This will return the custom column name
     }
 
+    public function getCountry(){
+        return $this->belongsTo('App\Models\Country','country','id')->withDefault(['name'=>'Pakistan','phonecode'=>'92']);
+    }
+
 }
