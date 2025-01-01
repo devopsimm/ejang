@@ -8,10 +8,14 @@ use App\Libraries\Encryption;
 use App\Models\Country;
 use App\Models\UserSubscription;
 use App\Notifications\SendTwoFactorCode;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -173,7 +177,7 @@ class AuthController extends Controller
 
       if ($forgetPassword == 'forget-password'){
           $request->validate([
-              'emailaddress' => 'required|string|email|max:255',
+              'emailaddress' => 'required|string|email|max:255|exists:jn_register_users,emailaddress',
           ], [
               'emailaddress.required' => 'Please provide your email address.',
               'emailaddress.string' => 'Please provide your correct email address.',
@@ -188,6 +192,18 @@ class AuthController extends Controller
           ]);
       }
 
+      $data = [];
+        if ($forgetPassword == 'forget-password') {
+            $token = Str::random(60);
+            DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $request->emailaddress],
+                [
+                    'token' => Hash::make($token),
+                    'created_at' => Carbon::now(),
+                ]
+            );
+            $data['token'] =  $token;
+        }
 
 
         $code = rand(100000, 999999);
@@ -197,10 +213,9 @@ class AuthController extends Controller
                 ->subject('E-jang Two Factor Code');
         });
 
-        return response()->json([
-            'data'=> $code,
-            'message' => 'OTP sent successfully',
-        ],Response::HTTP_ACCEPTED);
+        $data['data'] = $code;
+        $data['message'] = 'OTP sent successfully';
+        return response()->json($data,Response::HTTP_ACCEPTED);
 
     }
 
@@ -230,15 +245,40 @@ class AuthController extends Controller
     public function forgetPassword(Request $request){
         $CI_Encryption = new Encryption();
         $request->validate([
-            'emailaddress' => 'required|string|email|max:255',
+            'emailaddress' => 'required|string|email|max:255|exists:jn_register_users,emailaddress',
+            'token' => 'required|string',
             'password' => 'required|string|min:8',
         ], [
             'emailaddress.required' => 'Please provide your email address.',
             'emailaddress.string' => 'Please provide your correct email address.',
             'emailaddress.unique' => 'The email has already been taken.',
         ]);
+
+        $record = DB::table('password_reset_tokens')->where('email', $request->emailaddress)->first();
+        if (!$record) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid token or email.',
+            ], 400);
+        }
+        if (!Hash::check($request->token, $record->token)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid token.',
+            ], 400);
+        }
+        if (Carbon::parse($record->created_at)->addHour()->isPast()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Token has expired.',
+            ], 400);
+        }
+
+        DB::table('password_reset_tokens')->where('email', $request->emailaddress)->delete();
+
+
         User::where('emailaddress',$request->emailaddress)->update([
-            'password' => $CI_Encryption->encrypt($request->new_password)
+            'password' => $CI_Encryption->encrypt($request->password)
         ]);
         return response()->json([
             'message' => 'Password changed successfully',
