@@ -19,9 +19,9 @@ class UserSubscription extends Model
         return $this->belongsTo('App\Models\Users','user_id');
     }
 
-    public function subscription(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function subscription()
     {
-        return $this->belongsTo('App\Models\SubscriptionPlan','subscription_id');
+        return $this->belongsTo('App\Models\SubscriptionPlan','subscription_id','id');
     }
 
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Libraries\Encryption;
 use App\Models\Country;
+use App\Models\SubscriptionPlan;
 use App\Models\UserSubscription;
 use App\Notifications\SendTwoFactorCode;
 use Carbon\Carbon;
@@ -18,272 +19,240 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
-class AuthController extends Controller
+class SubscriptionController extends Controller
 {
-    public function register(Request $request)
-    {
-//        try {
-            $CI_Encryption = new Encryption();
-            $validated = $request->validate([
-                'name' => 'required|string|max:255',
-                'emailaddress' => 'required|string|email|max:255|unique:jn_register_users',
-                'password' => 'required|string|min:8',
-                'country_code'=>'string|max:255',
-                'phone_number'=>'required|string|max:255',
-                'country'=>'required|int|max:255',
-                'fcm_token'=>'required|string|max:255',
-                'plan_id'=>'int',
-            ], [
-                'emailaddress.required' => 'Please provide your email address.',
-                'emailaddress.string' => 'Please provide your correct email address.',
-                'emailaddress.unique' => 'The email has already been taken.',
-            ]);
-            $user = User::create([
-                'fullname' => $validated['name'],
-                'emailaddress' => $validated['emailaddress'],
-                'password' => $CI_Encryption->encrypt($validated['password']),
-                'phone_number' => $validated['phone_number'],
-                'country' => $validated['country'],
-                'fcm_token' => $validated['fcm_token'],
-            ]);
-            $subscription = false;
-            if (isset($request->plan_id)){
-                if ($validated['plan_id'] != 0){
-                    $subscription = UserSubscription::create([
-                        'user_id'=>$user->id,
-                        'subscription_id'=>$validated['plan_id']
-                    ]);
-                }
-            }
 
-            $token = $user->createToken('auth_token')->plainTextToken;
+    public function getPlans(Request $request){
+        $plans = SubscriptionPlan::where('publish_status','1')->get();
+
+        if (!count($plans)){
             return  response([
-                'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
-                'token'=>$token,
-            ], Response::HTTP_CREATED);
-//        }catch (\Exception $e){
-//            dd($e->getMessage());
-//        }
-    }
-
-    public function login(Request $request)
-    {
-        $CI_Encryption = new Encryption();
-
-        $validated = $request->validate([
-            'emailaddress' => 'required|email',
-            'password' => 'required',
-        ]);
-
-
-        $user = User::where('emailaddress', $validated['emailaddress'])->first();
-        if (!$user) {
-            return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
+                'message' => 'Subscription plans are not available',
+            ], Response::HTTP_NO_CONTENT);
         }
 
-        $OrgPassword = $CI_Encryption->decrypt($user->password);
-        if ($OrgPassword != $validated['password']){
-            return response()->json(['message' => 'Invalid credentials'], Response::HTTP_BAD_REQUEST);
-        }
+        return  response([
+            'data' => $plans,
+        ], Response::HTTP_ACCEPTED);
 
-        if (isset($request->fcm_token)){
-            $user->fcm_token = $request->fcm_token;
-            $user->save();
-        }
-
-
-        $token = $user->createToken('auth_token')->plainTextToken;
-        $subscription = $user->userSubscription;
-        return response()->json([
-            'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
-            'token' => $token,
-        ],Response::HTTP_ACCEPTED);
     }
 
-    public function logout(Request $request)
-    {
-        $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Logged out successfully'], Response::HTTP_ACCEPTED);
-    }
-
-    public function changePassword(Request $request)
-    {
-        $CI_Encryption = new Encryption();
-        $request->validate([
-            'old_password' => 'required|string',
-            'new_password' => 'required|string|min:8',
-        ]);
+    public function subscribe(Request $request){
         $user = Auth::user();
-        $OrgPassword = $CI_Encryption->decrypt($user->password);
-        if ($OrgPassword != $request->old_password){
-            return response()->json(['message' => 'Old Password is incorrect'], Response::HTTP_BAD_REQUEST);
-        }
-        $user->password = $CI_Encryption->encrypt($request->new_password);
-        $user->save();
-        return response()->json([
-            'message' => 'Password changed successfully',
-        ],Response::HTTP_ACCEPTED);
-    }
+        $userSubscription = new UserSubscription();
+        $currentDate = Carbon::now();
 
-    public function updateProfile(Request $request)
-    {
+        $previousSubscription = $userSubscription::where('user_id',$user->id)
+            ->where('end_subscription_date', '>=', $currentDate)
+            ->get();
 
-        $request->validate([
-            'name' => 'string|max:255',
-            'emailaddress' => 'string|email|max:255',
-            'country_code'=>'string|max:255',
-            'phone_number'=>'string|max:255',
-            'country'=>'int|max:255',
-            'fcm_token'=>'string|max:255',
-        ], [
-            'emailaddress.string' => 'Please provide your correct email address.',
-            'emailaddress.unique' => 'The email has already been taken.',
-        ]);
-
-        $user = Auth::user();
-
-
-        if ($request->filled('name')) {
-            $user->fullname = $request->name;
-        }
-        if ($request->filled('emailaddress')) {
-            $user->emailaddress = $request->emailaddress;
-        }
-        if ($request->filled('country_code')) {
-            $user->country_code = $request->country_code;
-        }
-        if ($request->filled('phone_number')) {
-            $user->phone_number = $request->phone_number;
-        }
-        if ($request->filled('country')) {
-            $user->country = $request->country;
-        }
-        if (isset($request->fcm_token)){
-            $user->fcm_token = $request->fcm_token;
-        }
-
-        $user->save();
-        $subscription = $user->userSubscription;
-        return response()->json([
-            'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
-        ],Response::HTTP_ACCEPTED);
-    }
-
-    public function sendOtp(Request $request,$forgetPassword=false){
-//        $user = Auth::user();
-//        $user->generateTwoFactorCode();
-//        $user->notify(new SendTwoFactorCode());
-
-
-      if ($forgetPassword == 'forget-password'){
-          $request->validate([
-              'emailaddress' => 'required|string|email|max:255|exists:jn_register_users,emailaddress',
-          ], [
-              'emailaddress.required' => 'Please provide your email address.',
-              'emailaddress.string' => 'Please provide your correct email address.',
-          ]);
-      }else{
-          $request->validate([
-              'emailaddress' => 'required|string|email|max:255|unique:jn_register_users',
-          ], [
-              'emailaddress.required' => 'Please provide your email address.',
-              'emailaddress.string' => 'Please provide your correct email address.',
-              'emailaddress.unique' => 'The email has already been taken.',
-          ]);
-      }
-
-      $data = [];
-        if ($forgetPassword == 'forget-password') {
-            $token = Str::random(60);
-            DB::table('password_reset_tokens')->updateOrInsert(
-                ['email' => $request->emailaddress],
-                [
-                    'token' => Hash::make($token),
-                    'created_at' => Carbon::now(),
-                ]
-            );
-            $data['token'] =  $token;
-        }
-
-
-        $code = rand(100000, 999999);
-        $view = view('otpEmail',compact('code'))->render();
-        Mail::html($view, function ($message) use ($request) {
-            $message->to($request->emailaddress)
-                ->subject('E-jang Two Factor Code');
-        });
-
-        $data['data'] = $code;
-        $data['message'] = 'OTP sent successfully';
-        return response()->json($data,Response::HTTP_ACCEPTED);
-
-    }
-
-    public function verifyOtp(Request $request){
-        $user = Auth::user();
-        if ($user->verification_code == $request->otp){
-            $user->resetTwoFactorCode();
+        if (count($previousSubscription)){
             return response()->json([
-                'message' => 'OTP verified',
-            ],Response::HTTP_ACCEPTED);
-        }else{
-            return response()->json([
-                'message' => 'OTP invalid',
+                'message'=>'You already have a subscription',
+                'data' => new UserResource($user),
+                'url' => 'https://estaging.jang.com.pk/payment-form/'.$user->id.'?type=mobile',
             ],Response::HTTP_BAD_REQUEST);
         }
+        if (isset($request->plan_id)){
+            if ($request->plan_id != 0){
 
-    }
+                $plan = SubscriptionPlan::where('publish_status','1')->where('id',$request->plan_id)->first();
 
-    public function getCountries(Request $request){
-        $countries = Country::all();
+               if (!$plan){
+                   return response()->json([
+                       'message'=>'Invalid Plan',
+                   ],Response::HTTP_NOT_FOUND);
+               }
+
+               $months = $plan->subscription;
+               $months = explode(' ',$months)[0];
+
+               $expiryDate = Carbon::now()->addMonth($months)->format('Y-m-d');
+
+                UserSubscription::create([
+                    'user_id'=>$user->id,
+                    'subscription_id'=>$request->plan_id,
+                    'end_subscription_date'=>$expiryDate
+                ]);
+            }
+        }
+
         return response()->json([
-            'data' => $countries,
-        ],Response::HTTP_ACCEPTED);
-    }
-
-    public function forgetPassword(Request $request){
-        $CI_Encryption = new Encryption();
-        $request->validate([
-            'emailaddress' => 'required|string|email|max:255|exists:jn_register_users,emailaddress',
-            'token' => 'required|string',
-            'password' => 'required|string|min:8',
-        ], [
-            'emailaddress.required' => 'Please provide your email address.',
-            'emailaddress.string' => 'Please provide your correct email address.',
-            'emailaddress.unique' => 'The email has already been taken.',
-        ]);
-
-        $record = DB::table('password_reset_tokens')->where('email', $request->emailaddress)->first();
-        if (!$record) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Invalid token or email.',
-            ], 400);
-        }
-        if (!Hash::check($request->token, $record->token)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Invalid token.',
-            ], 400);
-        }
-        if (Carbon::parse($record->created_at)->addHour()->isPast()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Token has expired.',
-            ], 400);
-        }
-
-        DB::table('password_reset_tokens')->where('email', $request->emailaddress)->delete();
-
-
-        User::where('emailaddress',$request->emailaddress)->update([
-            'password' => $CI_Encryption->encrypt($request->password)
-        ]);
-        return response()->json([
-            'message' => 'Password changed successfully',
+            'data' => new UserResource($user),
+            'url' => 'https://estaging.jang.com.pk/payment-form/'.$user->id,
         ],Response::HTTP_ACCEPTED);
 
 
+
+
+    }
+
+
+    public function complete_booking(Request $request)
+    {
+        /*echo '<pre>';print_r($_POST); echo '</pre>';
+        die;*/
+        $location_key = $request->location_key;
+        $return_location_key = $request->return_location_key;
+        $extra_amount = $request->extra_amount;
+        $extraIDs = $request->extraIDs;
+        $extraAmounts = $request->extraAmounts;
+        $vehicleID = $request->vehicleID;
+        $type = $request->type;
+
+
+        if($request->session()->get('user_id') == '')
+        {
+            if($type == 'login'){
+                $email = $request->email_login;
+                $password = $request->password_login;
+            }
+            else{
+                $fullname = $request->fullname;
+                $email = $request->email;
+                $password = $request->password;
+                $countrycode = $request->countrycode;
+                $citycode = $request->citycode;
+                $mobile = $request->mobile;
+                $firebasekey = '';
+                $registeredfromsource = 'web';
+            }
+
+            if($_POST['type'] == 'login'){
+                $url = '/api/login';
+                $param = array('sessionkey'=>$this->sessionKey,'username'=>$email,'password'=>$password);
+                $userData = getData($url,$param,"POST");
+
+                if(isset($userData['error']) && !isset($userData['data'])){
+                    echo '0|__|'.$userData['error'];
+                    die;
+                }
+
+                $request->session()->put('code_verify',$userData['data']['codeverify']);
+                $request->session()->put('verificationcode',$userData['data']['mobileCode']);
+                $request->session()->put('user_id',$userData['data']['reg_id']);
+                $request->session()->put('user_name',$userData['data']['first_name'].' '.$userData['data']['last_name']);
+                $request->session()->put('user_email',$userData['data']['email_address']);
+                $request->session()->put('user_phone','+'.$userData['data']['mobilecountrycode'].' '.$userData['data']['mobile']);
+
+                $userData2 = array('user_fullname'=>$request->session()->get("user_name"),'user_email'=>$request->session()->get("user_email"),'user_phone'=>$request->session()->get("user_phone") );
+            }
+            else{
+                $codeverify = 0;
+                $url = '/api/register';
+                $param = array('sessionkey'=>$this->sessionKey,'fullname'=>$fullname,'username'=>$email,'password'=>$password,'mobile'=>$countrycode.$citycode.$mobile,'mobilecountrycode'=>$countrycode,'mobilecitycode'=>$citycode,'mobilenumbersingle'=>$mobile,'registeredfromsource'=>$registeredfromsource,'firebasekey'=>$firebasekey,'codeverify'=>$codeverify);
+                $userData = getData($url,$param,"POST");
+
+                if(isset($userData['error'])){
+                    echo '0|__|'.$userData['error'];
+                    die;
+                }
+
+                echo $userData['data']['reg_id'].'gfdgdgdf';
+                $request->session()->put('code_verify',$userData['data']['codeverify']);
+                $request->session()->put('verificationcode',$userData['data']['mobileCode']);
+                $request->session()->put('cuser_id',$userData['data']['reg_id']);
+                $request->session()->put('cuser_name',$userData['data']['first_name'].' '.$userData['data']['last_name']);
+                $request->session()->put('cuser_email',$userData['data']['email_address']);
+                $request->session()->put('cuser_phone','+'.$userData['data']['mobilecountrycode'].' '.$userData['data']['mobile']);
+                dd($request->session()->all());
+                echo $userData['data']['reg_id']."aaa".$request->session()->get('cuser_id')."<pre>"; print_r($userData); die;
+                //$userData2 = array('user_fullname'=>$this->session->userdata("user_name"),'user_email'=>$this->session->userdata("user_email"),'user_phone'=>$this->session->userdata("user_phone") );
+
+                echo '1|__|';
+                die;
+            }
+        }
+        else{
+            $userData2 = array('user_fullname'=>$this->session->userdata("user_name"),'user_email'=>$this->session->userdata("user_email"),'user_phone'=>$this->session->userdata("user_phone") );
+        }
+        if($this->session->userdata("cuser_id"))
+            $userID = $this->session->userdata("cuser_id");
+        else
+            $userID = $this->session->userdata("user_id");
+
+        $data['piuckup_type'] = $piuckup_type = $this->session->userdata("piuckup_type");
+        $data['location'] = $location =  $this->session->userdata("location");
+        $data['locationName'] = $locationName =  $this->session->userdata("locationName");
+        $data['return_location'] = $return_location =  $this->session->userdata("return_location");
+        $data['fromDate'] = $fromDate =  $this->session->userdata("fromDate");
+        $data['pickuptime'] = $pickuptime =  $this->session->userdata("pickuptime");
+        $data['toDate'] = $toDate =  $this->session->userdata("toDate");
+        $data['returntime'] = $returntime =  $this->session->userdata("returntime");
+        $data['promotioncode'] = $promotioncode =  $this->session->userdata("promotioncode");
+        $data['userage'] = $userage =  $this->session->userdata("userage");
+        $data['licenseissuedata'] = $licenseissuedata =  $this->session->userdata("licenseissuedata");
+        $data['fromlocationstr'] = $fromlocationstr =  $this->session->userdata("fromlocationstr");
+        $filter_airport = ($isairport==1)?'&isairport=1':'';
+        $filter_userage = ($userage==1)?'&userage=1':'';
+        $filter_licenseissuedata = ($licenseissuedata==1)?'&licenseissuedata=1':'';
+
+        $loc_url = CRON_URL.'index.php/location/all?sessionkey='.$sessionkey;
+        $allLocations = getData($loc_url);
+        $data['location_key'] = $location_key;
+        $data['return_location_key'] = $return_location_key;
+        $data['allLocations'] = $allLocations;
+
+        $city = $data['allLocations']->data[$location_key]->cityID;
+
+        if($return_location != ''){
+            $filter_return_location = '&returnlocation='.$return_location.'&returncity='.$data['allLocations']->data[$return_location_key]->cityID;
+        }
+
+        $book_url = CRON_URL.'index.php/book?userID='.$userID.'&fromlocationstr='.$fromlocationstr.'&pickupdate='.$fromDate.'&pickuptime='.$pickuptime.'&returndate='.$toDate.'&tariff='.$extraIDs.'&returntime='.$returntime.'&location='.$location.'&city='.$city.'&promotion='.$promotioncode.'&vehicleID='.$vehicleID.$filter_airport.$filter_userage.$filter_licenseissuedata.$filter_return_location;
+
+        $bookingDetail = getData($book_url);
+
+        if(isset($bookingDetail->status) && ($bookingDetail->status == "Error")){
+            $this->session->set_flashdata("error_message",$bookingDetail->message);
+            redirect(base_url()."index.php/home/booking_info/".$vehicleID);
+            die;
+        }
+
+        $fleet_url = CRON_URL.'index.php/fleet/?fromDate='.$fromDate.'&pickuptime='.$pickuptime.'&toDate='.$toDate.'&returntime='.$returntime.'&promotioncode='.$promotioncode.$filter_airport.$filter_userage.$filter_licenseissuedata;
+        $allFleets = getData($fleet_url);
+        $key = array_search_inner($allFleets->data, 'vehicleID', $vehicleID);
+
+        $data['allFleets'] = $allFleets;
+        $data['key'] = $key;
+        $data['extra_amount'] = $extra_amount;
+        $data['extraIDs'] = $extraIDs;
+        $data['extraAmounts'] = $extraAmounts;
+
+        $data['fullname'] = $fullname;
+        $data['email'] = $email;
+        $data['countrycode'] = $countrycode;
+        $data['mobile'] = $mobile;
+
+        $data['bookingDetail'] = $bookingDetail;
+        $data['userData'] = $userData2;
+
+        $this->session->unset_userdata('piuckup_type');
+        $this->session->unset_userdata('location');
+        $this->session->unset_userdata('locationName');
+        $this->session->unset_userdata('return_location');
+        $this->session->unset_userdata('fromDate');
+        $this->session->unset_userdata('pickuptime');
+        $this->session->unset_userdata('toDate');
+        $this->session->unset_userdata('returntime');
+        $this->session->unset_userdata('promotioncode');
+        $this->session->unset_userdata('userage');
+        $this->session->unset_userdata('licenseissuedata');
+
+
+        if($this->session->userdata("code_verify") < 1){
+            $this->session->set_userdata("newuser",1);
+
+
+
+            redirect(base_url()."index.php/home/verify");
+            die;
+        }
+
+
+        $this->load->view('front/header_front', $data);
+        $this->load->view('front/booking_detail_view', $data);
+        $this->load->view('front/footer_front', $data);
     }
 
 }

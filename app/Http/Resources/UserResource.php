@@ -14,20 +14,19 @@ class UserResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-
-        $user = $this->resource['user'];
-        $subscription = $this->resource['subscription'];
-
         $data = [
-            'name'=>$user->fullname,
-            'emailaddress'=>$user->emailaddress,
-            'country_code'=>$user->country_code,
-            'phone_number'=>$user->phone_number,
-            'country'=>$user->getCountry,
-            'fcm_token'=>$user->fcm_token,
+            'name'=>$this->fullname,
+            'emailaddress'=>$this->emailaddress,
+            'country_code'=>$this->country_code,
+            'phone_number'=>$this->phone_number,
+            'country'=>$this->getCountry,
+            'fcm_token'=>$this->fcm_token,
             ];
-        if ($subscription){
-            $data['plan_id']  = $subscription->subscription_id;
+
+        if ($this->userSubscription){
+            $data['subscription'] = new SubscriptionResource($this->userSubscription);
+        }else{
+            $data['subscription'] = null;
         }
 
         return  $data;

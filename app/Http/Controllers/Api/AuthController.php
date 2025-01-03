@@ -46,19 +46,19 @@ class AuthController extends Controller
                 'country' => $validated['country'],
                 'fcm_token' => $validated['fcm_token'],
             ]);
-            $subscription = false;
-            if (isset($request->plan_id)){
-                if ($validated['plan_id'] != 0){
-                    $subscription = UserSubscription::create([
-                        'user_id'=>$user->id,
-                        'subscription_id'=>$validated['plan_id']
-                    ]);
-                }
-            }
+//            $subscription = false;
+//            if (isset($request->plan_id)){
+//                if ($validated['plan_id'] != 0){
+//                    $subscription = UserSubscription::create([
+//                        'user_id'=>$user->id,
+//                        'subscription_id'=>$validated['plan_id']
+//                    ]);
+//                }
+//            }
 
             $token = $user->createToken('auth_token')->plainTextToken;
             return  response([
-                'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
+                'data' => new UserResource($user),
                 'token'=>$token,
             ], Response::HTTP_CREATED);
 //        }catch (\Exception $e){
@@ -93,9 +93,9 @@ class AuthController extends Controller
 
 
         $token = $user->createToken('auth_token')->plainTextToken;
-        $subscription = $user->userSubscription;
+
         return response()->json([
-            'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
+            'data' => new UserResource($user),
             'token' => $token,
         ],Response::HTTP_ACCEPTED);
     }
@@ -163,9 +163,9 @@ class AuthController extends Controller
         }
 
         $user->save();
-        $subscription = $user->userSubscription;
+
         return response()->json([
-            'data' => new UserResource(['user' => $user, 'subscription' => $subscription]),
+            'data' => new UserResource($user),
         ],Response::HTTP_ACCEPTED);
     }
 
@@ -218,7 +218,6 @@ class AuthController extends Controller
         return response()->json($data,Response::HTTP_ACCEPTED);
 
     }
-
 
     public function verifyOtp(Request $request){
         $user = Auth::user();

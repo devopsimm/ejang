@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -79,7 +80,8 @@ class User extends Authenticatable
 
 
     public function userSubscription(){
-        return $this->hasOne('App\Models\UserSubscription','user_id')->withDefault(['subscription_id'=>0]);
+        $currentDate = Carbon::now();
+        return $this->hasOne('App\Models\UserSubscription','user_id')->where('end_subscription_date', '>=', $currentDate);
     }
 
     public function routeNotificationForMail()
