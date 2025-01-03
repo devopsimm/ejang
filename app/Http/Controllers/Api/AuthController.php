@@ -24,6 +24,12 @@ class AuthController extends Controller
     {
 //        try {
             $CI_Encryption = new Encryption();
+
+//            $user = User::where([
+//                'emailaddress' => $request->emailaddress,
+//                'account_status' => 0
+//            ])->count();
+        //    dd($user);
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'emailaddress' => 'required|string|email|max:255|unique:jn_register_users',
@@ -78,6 +84,9 @@ class AuthController extends Controller
 
         $user = User::where('emailaddress', $validated['emailaddress'])->first();
         if (!$user) {
+            return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
+        }
+        if (!$user->account_status == 0) {
             return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
         }
 
@@ -284,6 +293,28 @@ class AuthController extends Controller
         ],Response::HTTP_ACCEPTED);
 
 
+    }
+
+    public function deleteAccount(Request $request)
+    {
+
+        $user = Auth::user();
+
+
+        $user->account_status = 0;
+        $user->save();
+
+        $request->user()->currentAccessToken()->delete();
+        return response()->json([
+            'message' => 'Account Deleted',
+        ],Response::HTTP_ACCEPTED);
+    }
+
+    public function getUser(){
+        $user = Auth::user();
+        return response()->json([
+            'data' => new UserResource($user),
+        ],Response::HTTP_ACCEPTED);
     }
 
 }

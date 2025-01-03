@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\SubscriptionResource;
 use App\Http\Resources\UserResource;
 use App\Libraries\Encryption;
 use App\Models\Country;
@@ -47,11 +48,14 @@ class SubscriptionController extends Controller
             ->get();
 
         if (count($previousSubscription)){
-            return response()->json([
+            $data = [
                 'message'=>'You already have a subscription',
-                'data' => new UserResource($user),
-                'url' => 'https://estaging.jang.com.pk/payment-form/'.$user->id.'?type=mobile',
-            ],Response::HTTP_BAD_REQUEST);
+                'data' => new SubscriptionResource($user->userSubscription)
+            ];
+            if ($user->is_payment == 0){
+                $data['url'] = 'https://estaging.jang.com.pk/payment-form/'.$user->id.'?type=mobile';
+            }
+            return response()->json($data,Response::HTTP_BAD_REQUEST);
         }
         if (isset($request->plan_id)){
             if ($request->plan_id != 0){
@@ -78,7 +82,8 @@ class SubscriptionController extends Controller
         }
 
         return response()->json([
-            'data' => new UserResource($user),
+//            'data' => new UserResource($user),
+             'data' => new SubscriptionResource($user->userSubscription),
             'url' => 'https://estaging.jang.com.pk/payment-form/'.$user->id,
         ],Response::HTTP_ACCEPTED);
 

@@ -18,11 +18,14 @@ use App\Http\Controllers\Api\SubscriptionController;
 */
 
 
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::post('/update-profile', [AuthController::class, 'updateProfile']);
     Route::post('/subscribe', [SubscriptionController::class, 'subscribe']);
+    Route::post('/delete-account', [AuthController::class, 'deleteAccount']);
+    Route::get('/get-user', [AuthController::class, 'getUser']);
 
 });
 
@@ -31,7 +34,6 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/get-countries', [AuthController::class, 'getCountries']);
 Route::post('/send-otp/{password?}', [AuthController::class, 'sendOtp']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
-
 Route::post('/forget-password', [AuthController::class, 'forgetPassword']);
 
 
