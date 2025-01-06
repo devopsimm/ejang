@@ -83,10 +83,11 @@ class AuthController extends Controller
 
 
         $user = User::where('emailaddress', $validated['emailaddress'])->first();
+
         if (!$user) {
             return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
         }
-        if (!$user->account_status == 0) {
+        if ($user->account_status == 0) {
             return response()->json(['message' => 'Invalid credentials','status'=>Response::HTTP_BAD_REQUEST], Response::HTTP_BAD_REQUEST);
         }
 
@@ -288,6 +289,7 @@ class AuthController extends Controller
         User::where('emailaddress',$request->emailaddress)->update([
             'password' => $CI_Encryption->encrypt($request->password)
         ]);
+
         return response()->json([
             'message' => 'Password changed successfully',
         ],Response::HTTP_ACCEPTED);
